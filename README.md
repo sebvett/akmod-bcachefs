@@ -1,0 +1,73 @@
+# akmod-bcachefs
+
+Akmod packaging of the out-of-tree bcachefs module for Fedora Atomic
+desktops (Aurora, Bluefin, Bazzite, Silverblue). DKMS cannot write
+`/var/lib/dkms` during an `rpm-ostree` install. This package builds the
+same module with akmods instead.
+
+The module source is the DKMS tree in
+[koverstreet/bcachefs-tools](https://github.com/koverstreet/bcachefs-tools).
+The spec follows that repository's release tags and builds the upstream
+C-only module (`BCACHEFS_RUST=0`). It does not fetch a precompiled module.
+
+## What GitHub does
+
+Two workflows:
+
+- **Test akmod** runs on every pull request and on `main`. It builds the
+  akmod in a Fedora 44 container and compiles a binary module against that
+  container's `kernel-devel`. The build fails unless `modinfo` reports the
+  expected version, vermagic, and `fs-bcachefs` alias. A green push to
+  `main` submits the source RPM to COPR.
+- **Update from bcachefs-tools** runs every day. It reads the newest
+  `vX.Y.Z` tag, checks that the matching tarball is on
+  evilpiepirate.org, bumps the spec, and compile-tests it. A passing test
+  is pushed to `main`, which publishes it. A failing test opens a pull
+  request and leaves `main` alone.
+
+Until the `COPR_CONFIG` secret exists, the publish step logs a skip and
+the compile test still runs. Publishing uses COPR project
+`akmod-bcachefs` (override with the `COPR_PROJECT` repository variable).
+The first publish creates that project unlisted. List it, once you want
+other people to find it, with:
+
+```bash
+copr-cli modify akmod-bcachefs --unlisted-on-hp off
+```
+
+The local `~/.config/copr` token expires on 2026-11-19. Renew it in COPR
+and update the `COPR_CONFIG` secret when you do. The secret is the whole
+config file, including the `login` and `token` lines.
+
+## Install on Aurora
+
+After a publish has finished in COPR:
+
+```bash
+sudo dnf copr enable sebvett/akmod-bcachefs
+sudo rpm-ostree install akmod-bcachefs bcachefs-kmod-common
+systemctl reboot
+```
+
+`bcachefs-kmod-common` conflicts with `dkms-bcachefs`, so the DKMS
+package is not layered alongside the akmod. Install `bcachefs-tools`
+separately if you need the userspace utilities. After reboot:
+
+```bash
+modinfo -F version bcachefs
+modinfo -F vermagic bcachefs
+sudo modprobe bcachefs
+```
+
+This replaces the `sebvett/bcachefs-akmod-test` COPR. That project is not
+updated by these workflows.
+
+## Local compile test
+
+Requires podman or docker:
+
+```bash
+./scripts/ci-build.sh
+```
+
+RPMs land in `artifacts/rpms/`.

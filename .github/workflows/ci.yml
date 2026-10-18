@@ -1,0 +1,43 @@
+name: Test akmod
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile against the Fedora 44 kernel
+        run: bash scripts/ci-build.sh
+
+      - name: Upload RPMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcachefs-rpms
+          if-no-files-found: error
+          path: artifacts/rpms/*.rpm
+
+  publish:
+    needs: compile
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download RPMs
+        uses: actions/download-artifact@v4
+        with:
+          name: bcachefs-rpms
+          path: artifacts/rpms
+
+      - name: Publish SRPM to COPR
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          COPR_PROJECT: ${{ vars.COPR_PROJECT }}
+        run: bash scripts/publish-copr.sh

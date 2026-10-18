@@ -1,0 +1,91 @@
+name: Update from bcachefs-tools
+
+on:
+  schedule:
+    # GitHub runs this from the default branch only.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "bcachefs-tools version to package (x.y.z). Empty uses the newest tag."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve upstream version
+        id: ver
+        env:
+          OVERRIDE: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          current=$(awk '/^Version:/{print $2; exit}' packaging/bcachefs-kmod.spec)
+          if [[ -n ${OVERRIDE:-} ]]; then
+            latest=$OVERRIDE
+          else
+            tag=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/koverstreet/bcachefs-tools/tags?per_page=30" \
+              | jq -r '[.[].name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0]')
+            latest=${tag#v}
+          fi
+          if [[ ! $latest =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not resolve an upstream version (got '${latest}')" >&2
+            exit 1
+          fi
+          echo "latest=${latest}" >> "$GITHUB_OUTPUT"
+          echo "current=${current}" >> "$GITHUB_OUTPUT"
+          echo "Spec is ${current}; upstream is ${latest}"
+
+      - name: Already current
+        if: steps.ver.outputs.latest == steps.ver.outputs.current
+        run: echo "Nothing to do."
+
+      - name: Confirm the release tarball
+        if: steps.ver.outputs.latest != steps.ver.outputs.current
+        run: |
+          curl -fsI "https://evilpiepirate.org/bcachefs-tools/bcachefs-tools-${{ steps.ver.outputs.latest }}.tar.zst"
+
+      - name: Bump the spec
+        if: steps.ver.outputs.latest != steps.ver.outputs.current
+        run: bash scripts/bump-version.sh "${{ steps.ver.outputs.latest }}"
+
+      - name: Compile-test the new version
+        if: steps.ver.outputs.latest != steps.ver.outputs.current
+        run: bash scripts/ci-build.sh
+
+      - name: Commit the bump
+        if: steps.ver.outputs.latest != steps.ver.outputs.current
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/bcachefs-kmod.spec
+          git commit -m "Update bcachefs akmod to ${{ steps.ver.outputs.latest }}"
+          git push origin HEAD:main
+
+      - name: Open a pull request when the test fails
+        if: failure() && steps.ver.outputs.latest != steps.ver.outputs.current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git diff --quiet packaging/bcachefs-kmod.spec && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="bump/bcachefs-${{ steps.ver.outputs.latest }}-${{ github.run_id }}"
+          git checkout -B "$branch"
+          git add packaging/bcachefs-kmod.spec
+          git commit -m "Update bcachefs akmod to ${{ steps.ver.outputs.latest }}"
+          git push -u origin "$branch"
+          gh pr create \
+            --head "$branch" \
+            --title "Update bcachefs akmod to ${{ steps.ver.outputs.latest }}" \
+            --body "The scheduled compile test failed, so main was not updated and nothing was published. The Test akmod workflow on this pull request has the build log."

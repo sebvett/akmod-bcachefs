@@ -1,0 +1,5 @@
+artifacts/
+*.rpm
+*.src.rpm
+*.tar.zst
+*.tar.gz

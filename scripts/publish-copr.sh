@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Submit the built SRPM to COPR. No-ops, successfully, when COPR_CONFIG is unset
+# so pull-request builds stay green before publishing is configured.
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+if [[ -z ${COPR_CONFIG:-} ]]; then
+  echo "COPR_CONFIG is not set. Skipping publish."
+  echo "Store the copr-cli config file as the COPR_CONFIG Actions secret to publish."
+  exit 0
+fi
+
+srpm=$(find artifacts -name 'bcachefs-kmod-*.src.rpm' -print | sort | tail -1)
+if [[ -z $srpm ]]; then
+  echo "No bcachefs-kmod SRPM under artifacts/" >&2
+  exit 1
+fi
+
+install -d -m 0700 "${HOME}/.config"
+umask 077
+printf '%s\n' "$COPR_CONFIG" > "${HOME}/.config/copr"
+
+if ! command -v copr-cli >/dev/null 2>&1 && ! command -v copr >/dev/null 2>&1; then
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y copr-cli
+  else
+    sudo dnf install -y copr-cli
+  fi
+fi
+if command -v copr-cli >/dev/null 2>&1; then
+  copr=(copr-cli)
+else
+  copr=(copr)
+fi
+
+user=$(awk -F= '/^[[:space:]]*username[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' "${HOME}/.config/copr")
+project=${COPR_PROJECT:-akmod-bcachefs}
+full="${user}/${project}"
+
+if ! "${copr[@]}" get "$full" >/dev/null 2>&1; then
+  echo "Creating COPR project ${full}"
+  "${copr[@]}" create "$project" \
+    --chroot fedora-44-x86_64 \
+    --unlisted-on-hp on \
+    --description "akmod-bcachefs rebuilt from the bcachefs-tools DKMS sources" \
+    --instructions "Enable this repo, then: rpm-ostree install akmod-bcachefs bcachefs-kmod-common"
+fi
+
+echo "Submitting ${srpm} to ${full}"
+"${copr[@]}" build --nowait "$full" "$srpm"
