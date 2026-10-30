@@ -4,21 +4,32 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Catch new kernels that break the build between bcachefs-tools releases.
+    - cron: "47 7 * * *"
   workflow_dispatch:
 
 jobs:
   compile:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # longterm is the newest Fedora longterm kernel, which uCore's lts
+        # stream ships.
+        kernel: [mainline, longterm]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile against the Fedora 44 kernel
+      - name: Compile against the Fedora 44 ${{ matrix.kernel }} kernel
+        env:
+          KERNEL_FLAVOR: ${{ matrix.kernel }}
         run: bash scripts/ci-build.sh
 
       - name: Upload RPMs
         uses: actions/upload-artifact@v4
         with:
-          name: bcachefs-rpms
+          name: bcachefs-rpms-${{ matrix.kernel }}
           if-no-files-found: error
           path: artifacts/rpms/*.rpm
 
@@ -33,7 +44,7 @@ jobs:
       - name: Download RPMs
         uses: actions/download-artifact@v4
         with:
-          name: bcachefs-rpms
+          name: bcachefs-rpms-mainline
           path: artifacts/rpms
 
       - name: Publish SRPM to COPR

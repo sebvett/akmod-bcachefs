@@ -59,7 +59,11 @@ jobs:
 
       - name: Compile-test the new version
         if: steps.ver.outputs.latest != steps.ver.outputs.current
-        run: bash scripts/ci-build.sh
+        run: |
+          set -euo pipefail
+          for flavor in mainline longterm; do
+            KERNEL_FLAVOR=$flavor bash scripts/ci-build.sh
+          done
 
       - name: Commit the bump
         if: steps.ver.outputs.latest != steps.ver.outputs.current

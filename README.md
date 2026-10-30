@@ -14,15 +14,19 @@ C-only module (`BCACHEFS_RUST=0`). It does not fetch a precompiled module.
 
 Two workflows:
 
-- **Test akmod** runs on every pull request and on `main`. It builds the
-  akmod in a Fedora 44 container and compiles a binary module against that
-  container's `kernel-devel`. The build fails unless `modinfo` reports the
-  expected version, vermagic, and `fs-bcachefs` alias. A green push to
-  `main` submits the source RPM to COPR.
+- **Test akmod** runs on every pull request, on `main`, and daily. It
+  builds the akmod in a Fedora 44 container and compiles a binary module
+  against two kernels: Fedora's `kernel-devel` (`mainline`) and
+  `kernel-longterm-devel` from the newest `kwizart/kernel-longterm-X.Y`
+  COPR that builds for Fedora 44 (`longterm`, the kernel uCore's `lts`
+  stream ships). Each build
+  fails unless `modinfo` reports the expected version, vermagic, and
+  `fs-bcachefs` alias. A green push to `main` submits the source RPM to
+  COPR.
 - **Update from bcachefs-tools** runs every day. It reads the newest
   `vX.Y.Z` tag, checks that the matching tarball is on
-  evilpiepirate.org, bumps the spec, and compile-tests it. A passing test
-  is pushed to `main`, which publishes it. A failing test opens a pull
+  evilpiepirate.org, bumps the spec, and compile-tests it against both
+  kernels. A passing test is pushed to `main`, which publishes it. A failing test opens a pull
   request and leaves `main` alone.
 
 Until the `COPR_CONFIG` secret exists, the publish step logs a skip and
@@ -39,15 +43,23 @@ The local `~/.config/copr` token expires on 2026-11-19. Renew it in COPR
 and update the `COPR_CONFIG` secret when you do. The secret is the whole
 config file, including the `login` and `token` lines.
 
-## Install on Aurora
+## Install on Fedora Atomic
 
-After a publish has finished in COPR:
+The published COPR is `sebvett/akmod-bcachefs-test` (the `COPR_PROJECT`
+variable). After a publish has finished in COPR:
 
 ```bash
-sudo dnf copr enable sebvett/akmod-bcachefs
+sudo dnf copr enable sebvett/akmod-bcachefs-test
 sudo rpm-ostree install akmod-bcachefs bcachefs-kmod-common
 systemctl reboot
 ```
+
+On rpm-ostree the akmod's `%post` runs `akmods-ostree-post`, which builds
+the module for every kernel in the new deployment and aborts the
+transaction if a build fails. That needs the matching `kernel-devel` in
+the deployment. Bazzite ships it in the image; on uCore `lts`, layer
+`kernel-longterm-devel` at the image's kernel version from the
+`kwizart/kernel-longterm-X.Y` COPR if the image lacks it.
 
 `bcachefs-kmod-common` conflicts with `dkms-bcachefs`, so the DKMS
 package is not layered alongside the akmod. Install `bcachefs-tools`

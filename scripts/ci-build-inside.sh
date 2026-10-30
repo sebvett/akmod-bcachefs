@@ -1,16 +1,47 @@
 #!/usr/bin/env bash
 # Run inside a Fedora container. Builds the akmod SRPM and compiles one
 # binary module against the container's kernel-devel, then checks modinfo.
+# KERNEL_FLAVOR=mainline uses Fedora's kernel-devel. KERNEL_FLAVOR=longterm
+# uses kernel-longterm-devel from the newest kwizart/kernel-longterm-X.Y COPR
+# that builds for this Fedora release, the kernel uCore's lts stream ships.
 set -euo pipefail
 cd /work
 
+flavor=${KERNEL_FLAVOR:-mainline}
+case $flavor in
+  mainline)
+    devel=kernel-devel
+    ;;
+  longterm)
+    devel=kernel-longterm-devel
+    dnf install -y --setopt=install_weak_deps=False dnf-plugins-core jq
+    chroot="fedora-$(rpm -E %fedora)-$(uname -m)"
+    project=$(curl -fsSL --retry 3 \
+      "https://copr.fedorainfracloud.org/api_3/project/list?ownername=kwizart&limit=1000" \
+      | jq -r --arg chroot "$chroot" '.items[]
+          | select((.name | test("^kernel-longterm-[0-9]+\\.[0-9]+$")) and (.chroot_repos | has($chroot)))
+          | .name' \
+      | sort -V | tail -1)
+    if [[ -z $project ]]; then
+      echo "No kwizart/kernel-longterm-X.Y COPR builds for ${chroot}" >&2
+      exit 1
+    fi
+    echo "Using kwizart/${project}"
+    dnf copr enable -y "kwizart/${project}"
+    ;;
+  *)
+    echo "unknown KERNEL_FLAVOR ${flavor}" >&2
+    exit 2
+    ;;
+esac
+
 dnf install -y --setopt=install_weak_deps=False \
-  rpm-build kernel-devel gcc make elfutils-libelf-devel openssl-devel \
+  rpm-build "$devel" gcc make elfutils-libelf-devel openssl-devel \
   kmodtool kmod zstd curl xz findutils
 
 ver=$(awk '/^Version:/{print $2; exit}' packaging/bcachefs-kmod.spec)
-kver=$(rpm -q kernel-devel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort -V | tail -1)
-echo "Building bcachefs ${ver} against kernel ${kver}"
+kver=$(rpm -q "$devel" --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort -V | tail -1)
+echo "Building bcachefs ${ver} against ${flavor} kernel ${kver}"
 
 top=/work/artifacts/rpmbuild
 rm -rf "$top" /work/artifacts/rpms
@@ -72,5 +103,5 @@ got_alias=$(modinfo -F alias "$ko" | tr '\n' ' ')
 }
 
 cp -a "$top"/RPMS/*/*.rpm "$top"/SRPMS/*.src.rpm /work/artifacts/rpms/
-echo "Compile test passed for ${ver} on ${kver}"
+echo "Compile test passed for ${ver} on ${flavor} kernel ${kver}"
 ls -l /work/artifacts/rpms

@@ -27,5 +27,6 @@ exec "$engine" run --rm \
   "${mount[@]}" \
   --workdir /work \
   --env "JOBS=${JOBS:-2}" \
+  --env "KERNEL_FLAVOR=${KERNEL_FLAVOR:-mainline}" \
   "$image" \
   bash scripts/ci-build-inside.sh
