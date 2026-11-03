@@ -34,8 +34,9 @@ Two workflows:
   other workflows). A failing test opens a pull
   request and leaves `main` alone.
 
-Until the `COPR_CONFIG` secret exists, the publish step logs a skip and
-the compile test still runs. Publishing uses the test COPR project
+Publishing needs the `COPR_CONFIG` secret; without it the publish job
+fails rather than skipping, so an expiring test project cannot lapse
+unnoticed. Publishing uses the test COPR project
 `akmod-bcachefs-test` (override with the `COPR_PROJECT` repository
 variable). The first publish creates that project unlisted, with a 14-day
 lifetime (the `COPR_DELETE_AFTER_DAYS` default in `ci.yml`; remove it

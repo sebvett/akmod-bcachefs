@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Submit the built SRPMs (the akmod and, when built, upstream bcachefs-tools)
-# to COPR. No-ops, successfully, when COPR_CONFIG is unset
-# so pull-request builds stay green before publishing is configured.
+# to COPR. Fails when COPR_CONFIG is unset: publishing only runs on main, and a
+# silent skip there leaves the test COPR to expire.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
 if [[ -z ${COPR_CONFIG:-} ]]; then
-  echo "COPR_CONFIG is not set. Skipping publish."
-  echo "Store the copr-cli config file as the COPR_CONFIG Actions secret to publish."
-  exit 0
+  echo "COPR_CONFIG is not set, so nothing can be published." >&2
+  echo "Store the copr-cli config file as the COPR_CONFIG Actions secret." >&2
+  exit 1
 fi
 
 srpm=$(find artifacts -name 'bcachefs-kmod-*.src.rpm' -print | sort | tail -1)
