@@ -39,14 +39,29 @@ user=$(awk -F= '/^[[:space:]]*username[[:space:]]*=/{gsub(/[[:space:]]/, "", $2)
 project=${COPR_PROJECT:-akmod-bcachefs}
 full="${user}/${project}"
 
+# A test project deletes itself this many days after it was last refreshed.
+# Empty keeps the project permanently.
+days=${COPR_DELETE_AFTER_DAYS:-}
+expiry=()
+if [[ -n $days ]]; then
+  expiry=(--delete-after-days "$days")
+fi
+
 if ! "${copr[@]}" get "$full" >/dev/null 2>&1; then
   echo "Creating COPR project ${full}"
   "${copr[@]}" create "$project" \
     --chroot fedora-44-x86_64 \
+    "${expiry[@]}" \
     --unlisted-on-hp on \
     --description "akmod-bcachefs rebuilt from the bcachefs-tools DKMS sources" \
     --instructions "Enable this repo, then: rpm-ostree install akmod-bcachefs bcachefs-kmod-common"
 fi
 
+# Wait for the build so a COPR failure fails this job instead of passing silently.
 echo "Submitting ${srpm} to ${full}"
-"${copr[@]}" build --nowait "$full" "$srpm"
+"${copr[@]}" build "$full" "$srpm"
+
+if [[ -n $days ]]; then
+  echo "Restarting the ${days}-day expiry of ${full}"
+  "${copr[@]}" modify "$project" "${expiry[@]}"
+fi

@@ -21,18 +21,24 @@ Two workflows:
   COPR that builds for Fedora 44 (`longterm`, the kernel uCore's `lts`
   stream ships). Each build
   fails unless `modinfo` reports the expected version, vermagic, and
-  `fs-bcachefs` alias. A green push to `main` submits the source RPM to
-  COPR.
+  `fs-bcachefs` alias. A green run on `main` (push, daily or manual)
+  submits the source RPM to COPR and waits for the COPR build, so a
+  failed COPR build fails the run.
 - **Update from bcachefs-tools** runs every day. It reads the newest
   `vX.Y.Z` tag, checks that the matching tarball is on
   evilpiepirate.org, bumps the spec, and compile-tests it against both
-  kernels. A passing test is pushed to `main`, which publishes it. A failing test opens a pull
+  kernels. A passing test is pushed to `main`, and the next daily Test
+  akmod run publishes it (pushes made with `GITHUB_TOKEN` do not start
+  other workflows). A failing test opens a pull
   request and leaves `main` alone.
 
 Until the `COPR_CONFIG` secret exists, the publish step logs a skip and
-the compile test still runs. Publishing uses COPR project
-`akmod-bcachefs` (override with the `COPR_PROJECT` repository variable).
-The first publish creates that project unlisted. List it, once you want
+the compile test still runs. Publishing uses the test COPR project
+`akmod-bcachefs-test` (override with the `COPR_PROJECT` repository
+variable). The first publish creates that project unlisted, with a 14-day
+lifetime (the `COPR_DELETE_AFTER_DAYS` default in `ci.yml`; remove it
+there for a permanent project). Each publish restarts the countdown, so the project
+only expires once publishing stops. List it, once you want
 other people to find it, with:
 
 ```bash
@@ -72,7 +78,8 @@ sudo modprobe bcachefs
 ```
 
 This replaces the `sebvett/bcachefs-akmod-test` COPR. That project is not
-updated by these workflows.
+updated by these workflows. An earlier `sebvett/akmod-bcachefs-test` was
+deleted at the end of its 14-day test lifetime because nothing refreshed it.
 
 ## Local compile test
 

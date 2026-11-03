@@ -35,7 +35,9 @@ jobs:
 
   publish:
     needs: compile
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Scheduled runs publish too: pushes made by the update workflow use
+    # GITHUB_TOKEN, which does not start this workflow on push.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:44
     steps:
@@ -50,5 +52,8 @@ jobs:
       - name: Publish SRPM to COPR
         env:
           COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
-          COPR_PROJECT: ${{ vars.COPR_PROJECT }}
+          # A test project that expires 14 days after the last publish, until
+          # this packaging is merged upstream. Repository variables override.
+          COPR_PROJECT: ${{ vars.COPR_PROJECT || 'akmod-bcachefs-test' }}
+          COPR_DELETE_AFTER_DAYS: ${{ vars.COPR_DELETE_AFTER_DAYS || '14' }}
         run: bash scripts/publish-copr.sh
