@@ -22,15 +22,21 @@ fi
 
 spec=$(curl -fsSL --retry 3 \
   "https://raw.githubusercontent.com/koverstreet/bcachefs-tools/v${ver}/bcachefs-tools.spec")
-# "Version: 0%{?_version}" yields 01.39.7 once _version is set, so the
-# Version line is replaced too. Nothing else in upstream's spec changes.
-if ! grep -q '^Version:[[:space:]]*0%{?_version}$' <<< "$spec"; then
-  echo "Upstream spec's Version line changed; review this script" >&2
+# Two fixes to upstream's spec, both worth reporting upstream:
+# - "Version: 0%{?_version}" yields 01.39.7 once _version is set.
+# - The Rust build runs bindgen, which the spec does not BuildRequire.
+if ! grep -q '^Version:[[:space:]]*0%{?_version}$' <<< "$spec" ||
+   ! grep -q '^BuildRequires:[[:space:]]*clang-devel$' <<< "$spec"; then
+  echo "Upstream spec changed shape; review this script" >&2
   exit 1
 fi
 {
   printf '%%global _version %s\n' "$ver"
-  sed 's/^Version:[[:space:]]*0%{?_version}$/Version:        %{_version}/' <<< "$spec"
+  if grep -q 'bindgen' <<< "$spec"; then
+    printf '%s\n' "$spec"
+  else
+    sed 's/^BuildRequires:[[:space:]]*clang-devel$/&\nBuildRequires:  bindgen-cli/' <<< "$spec"
+  fi | sed 's/^Version:[[:space:]]*0%{?_version}$/Version:        %{_version}/'
 } > "$top/SPECS/bcachefs-tools.spec"
 
 tarball="bcachefs-tools-vendored-${ver}.tar.zst"
