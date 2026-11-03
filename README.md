@@ -23,7 +23,9 @@ Two workflows:
   fails unless `modinfo` reports the expected version, vermagic, and
   `fs-bcachefs` alias. A green run on `main` (push, daily or manual)
   submits the source RPM to COPR and waits for the COPR build, so a
-  failed COPR build fails the run.
+  failed COPR build fails the run. The same run builds upstream's own
+  `bcachefs-tools.spec` and vendored tarball at the same version
+  (`scripts/tools-srpm.sh`), so COPR carries tools that match the module.
 - **Update from bcachefs-tools** runs every day. It reads the newest
   `vX.Y.Z` tag, checks that the matching tarball is on
   evilpiepirate.org, bumps the spec, and compile-tests it against both

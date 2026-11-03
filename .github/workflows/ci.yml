@@ -49,7 +49,11 @@ jobs:
           name: bcachefs-rpms-mainline
           path: artifacts/rpms
 
-      - name: Publish SRPM to COPR
+      # Upstream's own spec at the same version, so the tools match the module.
+      - name: Build the bcachefs-tools SRPM
+        run: bash scripts/tools-srpm.sh
+
+      - name: Publish SRPMs to COPR
         env:
           COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
           # A test project that expires 14 days after the last publish, until

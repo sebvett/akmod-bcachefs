@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Submit the built SRPM to COPR. No-ops, successfully, when COPR_CONFIG is unset
+# Submit the built SRPMs (the akmod and, when built, upstream bcachefs-tools)
+# to COPR. No-ops, successfully, when COPR_CONFIG is unset
 # so pull-request builds stay green before publishing is configured.
 set -euo pipefail
 
@@ -16,6 +17,11 @@ srpm=$(find artifacts -name 'bcachefs-kmod-*.src.rpm' -print | sort | tail -1)
 if [[ -z $srpm ]]; then
   echo "No bcachefs-kmod SRPM under artifacts/" >&2
   exit 1
+fi
+srpms=("$srpm")
+tools=$(find artifacts -name 'bcachefs-tools-*.src.rpm' -print | sort | tail -1)
+if [[ -n $tools ]]; then
+  srpms+=("$tools")
 fi
 
 install -d -m 0700 "${HOME}/.config"
@@ -58,8 +64,8 @@ if ! "${copr[@]}" get "$full" >/dev/null 2>&1; then
 fi
 
 # Wait for the build so a COPR failure fails this job instead of passing silently.
-echo "Submitting ${srpm} to ${full}"
-"${copr[@]}" build "$full" "$srpm"
+echo "Submitting ${srpms[*]} to ${full}"
+"${copr[@]}" build "$full" "${srpms[@]}"
 
 if [[ -n $days ]]; then
   echo "Restarting the ${days}-day expiry of ${full}"
